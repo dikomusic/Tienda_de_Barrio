@@ -157,7 +157,15 @@ $rol = ($_SESSION['rol'] == 1) ? 'ADMIN' : 'EMPLEADO';
                         <td><?php echo $p['id_producto']; ?></td>
                         <td><strong><?php echo $p['nombre']; ?></strong></td>
                         <td class="col-cat"><?php echo $p['nombre_categoria']; ?></td>
-                        <td><strong><?php echo $p['stock_actual']; ?></strong></td>
+                        <td>
+    <?php if($p['stock_actual'] <= 5): // O usa $p['stock_minimo'] si lo tienes ?>
+        <span class="status-badge bg-red" style="color:white; background:red;">
+        <?php echo $p['stock_actual']; ?>
+        </span>
+    <?php else: ?>
+        <strong><?php echo $p['stock_actual']; ?></strong>
+    <?php endif; ?>
+</td>
                         
                         <td>
                             <?php if($p['estado'] == 1): ?>
@@ -168,9 +176,10 @@ $rol = ($_SESSION['rol'] == 1) ? 'ADMIN' : 'EMPLEADO';
                         </td>
 
                         <td style="white-space: nowrap;">
-                            <a href="formulario.php?id=<?php echo $p['id_producto']; ?>" title="Modificar">
-                                <svg class="icon-btn" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            </a>
+                            <button class="btn-toolbar" style="border:none; background:transparent;" 
+    onclick='editarProducto(<?php echo json_encode($p); ?>)'>
+    <svg class="icon-btn" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+</button>
 
                             <?php if($p['estado'] == 1): ?>
                                 <a href="../../controllers/ProductoController.php?accion=estado&id=<?php echo $p['id_producto']; ?>&estado=0" title="Desactivar">
@@ -205,7 +214,7 @@ $rol = ($_SESSION['rol'] == 1) ? 'ADMIN' : 'EMPLEADO';
     </div>
 
     <div id="modalProv" class="modal-overlay">
-        <div class="modal-box">
+        <div class="modal-box" style="width: 700px !important; max-width: 95%;">
             <span class="close-modal" onclick="closeModal('modalProv')">&times;</span>
             
             <div id="viewProvList">
@@ -324,6 +333,99 @@ $rol = ($_SESSION['rol'] == 1) ? 'ADMIN' : 'EMPLEADO';
             </div>
         </div>
     </div>
+
+    <div id="modalProducto" class="modal-overlay">
+    <div class="modal-box" style="width: 600px;">
+        <span class="close-modal" onclick="closeModal('modalProducto')">&times;</span>
+        <h2 id="tituloModalProd">Nuevo Producto</h2>
+        
+        <form action="../../controllers/ProductoController.php" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="accion" id="accionProd" value="guardar">
+            <input type="hidden" name="id_producto" id="idProd">
+
+            <div class="form-group">
+                <label>Código de Barras</label>
+                <input type="text" name="codigo" id="prodCodigo" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label>Nombre del Producto</label>
+                <input type="text" name="nombre" id="prodNombre" class="form-input" required>
+            </div>
+            
+            <div style="display:flex; gap:10px;">
+                <div class="form-group" style="flex:1;">
+                    <label>Precio Compra</label>
+                    <input type="number" step="0.01" name="precio_compra" id="prodCompra" class="form-input" required>
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>Precio Venta</label>
+                    <input type="number" step="0.01" name="precio_venta" id="prodVenta" class="form-input" required>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <div class="form-group" style="flex:1;">
+                    <label>Stock Inicial</label>
+                    <input type="number" name="stock" id="prodStock" class="form-input" required>
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>Categoría</label>
+                    <select name="id_categoria" id="prodCat" class="form-input">
+                        <?php foreach($categorias as $c): ?>
+                            <option value="<?php echo $c['id_categoria']; ?>"><?php echo $c['nombre_categoria']; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Proveedor</label>
+                <select name="id_proveedor" id="prodProv" class="form-input">
+                    <?php foreach($proveedores as $pr): ?>
+                        <option value="<?php echo $pr['id_proveedor']; ?>"><?php echo $pr['empresa']; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <button type="submit" class="btn-save" style="width:100%; margin-top:10px;">GUARDAR DATOS</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    // CAMBIA TU FUNCION filtrarTabla() y verDetalle() dejandolas igual...
+    // PERO AGREGA ESTA NUEVA:
+
+    function editarProducto(datos) {
+        // 1. Llenar campos
+        document.getElementById('tituloModalProd').innerText = "Editar Producto";
+        document.getElementById('accionProd').value = "editar";
+        document.getElementById('idProd').value = datos.id_producto;
+        
+        document.getElementById('prodCodigo').value = datos.codigo;
+        document.getElementById('prodNombre').value = datos.nombre;
+        document.getElementById('prodCompra').value = datos.precio_compra;
+        document.getElementById('prodVenta').value = datos.precio_venta;
+        document.getElementById('prodStock').value = datos.stock_actual;
+        document.getElementById('prodCat').value = datos.id_categoria;
+        document.getElementById('prodProv').value = datos.id_proveedor;
+
+        // 2. Abrir Modal
+        openModal('modalProducto');
+    }
+    
+    // Modifica el botón de "Nuevo Producto" arriba en el HTML para que llame a esta función:
+    // <button onclick="nuevoProducto()" class="btn-toolbar">➕ Nuevo Producto</button>
+    function nuevoProducto() {
+        document.getElementById('tituloModalProd').innerText = "Nuevo Producto";
+        document.getElementById('accionProd').value = "guardar";
+        document.getElementById('idProd').value = "";
+        document.getElementById('prodCodigo').value = "";
+        document.getElementById('prodNombre').value = "";
+        // ... limpiar los demas ...
+        openModal('modalProducto');
+    }
+</script>
 
     <script>
         // --- 1. AUTO-APERTURA INTELIGENTE (EL FIX) ---

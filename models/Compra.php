@@ -17,13 +17,17 @@ class Compra {
             // 1. Insertar Cabecera
             $sql = "INSERT INTO compras (id_proveedor, id_usuario, total, estado) VALUES (:prov, :usr, :tot, 1)";
             $stmt = $this->conn->prepare($sql);
-            $stmt->execute([':prov' => $id_proveedor, ':usr' => $id_usuario, ':tot' => $total]);
+            $stmt_stock->execute([
+    ':cant' => $item['cantidad'], 
+    ':id' => $item['id_producto'],
+    ':costo' => $item['costo'] // <--- ¡ESTO FALTABA!
+]);
             $id_compra = $this->conn->lastInsertId();
 
             // 2. Procesar detalles
             foreach ($carrito as $item) {
                 // RF-25: AUMENTAR STOCK (Suma)
-                $sql_stock = "UPDATE productos SET stock_actual = stock_actual + :cant WHERE id_producto = :id";
+                $sql_stock = "UPDATE productos SET stock_actual = stock_actual + :cant, precio_compra = :costo WHERE id_producto = :id";
                 $stmt_stock = $this->conn->prepare($sql_stock);
                 $stmt_stock->execute([':cant' => $item['cantidad'], ':id' => $item['id_producto']]);
 

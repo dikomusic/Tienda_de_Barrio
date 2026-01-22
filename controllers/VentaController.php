@@ -110,11 +110,6 @@ if (isset($_POST['accion']) && $_POST['accion'] == 'finalizar') {
 // 5. ANULAR VENTA (RESTAURAR STOCK)
 if (isset($_GET['accion']) && $_GET['accion'] == 'anular') {
     // Validar que sea Admin (Opcional, pero recomendado)
-    if ($_SESSION['rol'] != 1) { 
-        header("Location: ../views/ventas/historial.php?error=permisos"); 
-        exit(); 
-    }
-
     $id_venta = $_GET['id'];
     
     // Llamamos al modelo que ya tiene la lógica de devolver stock

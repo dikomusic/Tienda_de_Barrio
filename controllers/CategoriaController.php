@@ -4,7 +4,7 @@ session_start();
 include_once '../models/Categoria.php';
 
 // Validar Permisos
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] != 1) { 
+if (!isset($_SESSION['rol'])) { 
     header("Location: ../index.php"); 
     exit(); 
 }

@@ -138,8 +138,6 @@ if (isset($_POST['accion']) && $_POST['accion'] == 'finalizar') {
 
 // ACCIÓN 5: ANULAR (Solo Admin)
 if (isset($_GET['accion']) && $_GET['accion'] == 'anular') {
-    if ($_SESSION['rol'] != 1) { header("Location: ../views/compras/historial.php?error=permisos"); exit(); }
-    
     $resultado = $modeloCompra->anularCompra($_GET['id']);
     if ($resultado == "OK") header("Location: ../views/compras/historial.php?mensaje=anulado");
     elseif ($resultado == "STOCK_ERROR") header("Location: ../views/compras/historial.php?error=stock_insuficiente");

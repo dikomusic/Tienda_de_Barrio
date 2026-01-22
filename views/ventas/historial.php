@@ -108,7 +108,7 @@ if(isset($_GET['ver_detalle'])) {
                     
                     <div style="width:25%; text-align:right;">
                         
-                        <?php if($v['estado'] == 1 && $_SESSION['rol'] == 1): ?>
+                        <?php if($v['estado'] == 1): ?>
                             <a href="../../controllers/VentaController.php?accion=anular&id=<?php echo $v['id_venta']; ?>" 
                                onclick="return confirm('¿Seguro que deseas ANULAR esta venta? \n\nLos productos volverán al stock automáticamente.')"
                                class="btn-anular">

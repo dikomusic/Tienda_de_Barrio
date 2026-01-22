@@ -104,7 +104,7 @@ if(isset($_GET['ver_detalle'])) {
                     <div style="width:25%;"><?php echo $c['fecha_compra']; ?></div>
                     <div style="width:20%; font-weight:bold;"><?php echo $c['total']; ?> Bs</div>
                     <div style="width:20%; text-align:right;">
-                        <?php if($c['estado']==1 && $_SESSION['rol']==1): ?>
+                        <?php if($c['estado']==1): ?>
                             <a href="../../controllers/CompraController.php?accion=anular&id=<?php echo $c['id_compra']; ?>" 
                                onclick="return confirm('¿Seguro? Se descontará el stock.')" 
                                class="btn-anular">Anular</a>
