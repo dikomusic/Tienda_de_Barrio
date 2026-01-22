@@ -9,59 +9,55 @@ class Reporte {
         $this->conn = $db->getConexion();
     }
 
-    // RF-36: Reporte de Ingresos (Suma total en un rango de fechas)
-    public function obtenerTotalVentas($fecha_inicio, $fecha_fin) {
-        // Aseguramos cubrir todo el día final agregando hora máxima
-        $fecha_fin = $fecha_fin . " 23:59:59";
-        
-        $sql = "SELECT SUM(total) as total_ganado, COUNT(*) as cantidad_ventas 
+    // 1. TARJETA: Total Vendido HOY
+    public function ventasHoy() {
+        $sql = "SELECT SUM(total) as total FROM ventas WHERE DATE(fecha_venta) = CURDATE() AND estado = 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+        $res = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $res['total'] ? $res['total'] : 0;
+    }
+
+    // 2. TARJETA: Total Vendido este MES
+    public function ventasMes() {
+        $sql = "SELECT SUM(total) as total FROM ventas WHERE MONTH(fecha_venta) = MONTH(CURDATE()) AND YEAR(fecha_venta) = YEAR(CURDATE()) AND estado = 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+        $res = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $res['total'] ? $res['total'] : 0;
+    }
+
+    // 3. TARJETA: Cantidad de Productos con Stock Bajo (< 5)
+    public function stockBajo() {
+        $sql = "SELECT COUNT(*) as total FROM productos WHERE stock_actual <= 5 AND estado = 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+        $res = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $res['total'];
+    }
+
+    // 4. GRAFICO: Ventas de los últimos 7 días
+    public function ventasUltimos7Dias() {
+        $sql = "SELECT DATE(fecha_venta) as fecha, SUM(total) as total 
                 FROM ventas 
-                WHERE estado = 1 
-                AND fecha_venta BETWEEN :inicio AND :fin";
-        
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute([':inicio' => $fecha_inicio, ':fin' => $fecha_fin]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-
-    // RF-39: Productos Más Vendidos (Top 5)
-    public function obtenerMasVendidos($fecha_inicio, $fecha_fin) {
-        $fecha_fin = $fecha_fin . " 23:59:59";
-
-        $sql = "SELECT p.nombre, SUM(dv.cantidad) as total_unidades
-                FROM detalle_ventas dv
-                INNER JOIN ventas v ON dv.id_venta = v.id_venta
-                INNER JOIN productos p ON dv.id_producto = p.id_producto
-                WHERE v.estado = 1 
-                AND v.fecha_venta BETWEEN :inicio AND :fin
-                GROUP BY p.id_producto
-                ORDER BY total_unidades DESC
-                LIMIT 5";
-
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute([':inicio' => $fecha_inicio, ':fin' => $fecha_fin]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    // RF-38: Identificar Productos Bajo Stock (Alerta)
-    public function obtenerBajoStock() {
-        $sql = "SELECT * FROM productos 
-                WHERE stock_actual <= stock_minimo 
-                AND estado = 1 
-                ORDER BY stock_actual ASC";
+                WHERE fecha_venta >= DATE(NOW()) - INTERVAL 7 DAY AND estado = 1
+                GROUP BY DATE(fecha_venta) 
+                ORDER BY fecha_venta ASC";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // RF-37: Reporte General de Stock (Inventario Completo)
-    public function obtenerStockCompleto() {
-        $sql = "SELECT p.*, c.nombre_categoria, pr.empresa 
-                FROM productos p
-                INNER JOIN categorias c ON p.id_categoria = c.id_categoria
-                INNER JOIN proveedores pr ON p.id_proveedor = pr.id_proveedor
-                WHERE p.estado = 1
-                ORDER BY p.nombre ASC";
+    // 5. TABLA: Top 5 Productos Más Vendidos
+    public function productosMasVendidos() {
+        $sql = "SELECT p.nombre, SUM(d.cantidad) as cantidad_total 
+                FROM detalle_ventas d
+                INNER JOIN ventas v ON d.id_venta = v.id_venta
+                INNER JOIN productos p ON d.id_producto = p.id_producto
+                WHERE v.estado = 1
+                GROUP BY p.id_producto 
+                ORDER BY cantidad_total DESC 
+                LIMIT 5";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);

@@ -9,52 +9,52 @@ class Venta {
         $this->conn = $db->getConexion();
     }
 
-    // RF-29, RF-31, RF-32: REGISTRAR VENTA COMPLETA
-    public function registrarVenta($id_usuario, $total, $carrito_productos) {
+    // 1. REGISTRAR VENTA (Transacción Compleja)
+    public function registrar($id_usuario, $total, $productos_carrito) {
         try {
-            // INICIO DE TRANSACCION (Todo o Nada)
             $this->conn->beginTransaction();
 
-            // 1. Insertar Cabecera de Venta
-            $sql = "INSERT INTO ventas (id_usuario, total, estado) VALUES (:usr, :tot, 1)";
+            // A) Insertar Cabecera de Venta
+            $sql = "INSERT INTO ventas (id_usuario, fecha_venta, total, estado) VALUES (:user, NOW(), :total, 1)";
             $stmt = $this->conn->prepare($sql);
-            $stmt->execute([':usr' => $id_usuario, ':tot' => $total]);
+            $stmt->execute([':user' => $id_usuario, ':total' => $total]);
             $id_venta = $this->conn->lastInsertId();
 
-            // 2. Procesar cada producto del carrito
-            foreach ($carrito_productos as $prod) {
-                // RF-32: DESCONTAR STOCK
-                $sql_stock = "UPDATE productos SET stock_actual = stock_actual - :cant WHERE id_producto = :id";
-                $stmt_stock = $this->conn->prepare($sql_stock);
-                $stmt_stock->execute([':cant' => $prod['cantidad'], ':id' => $prod['id_producto']]);
+            // B) Insertar Detalles y RESTAR Stock
+            $sql_detalle = "INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (:idv, :idp, :cant, :prec, :sub)";
+            $sql_stock   = "UPDATE productos SET stock_actual = stock_actual - :cant WHERE id_producto = :idp";
+            
+            $stmt_det = $this->conn->prepare($sql_detalle);
+            $stmt_stk = $this->conn->prepare($sql_stock);
 
-                // 3. Insertar Detalle
-                $sql_det = "INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) 
-                            VALUES (:idv, :idp, :cant, :pre, :sub)";
-                $stmt_det = $this->conn->prepare($sql_det);
+            foreach ($productos_carrito as $prod) {
+                // Guardar detalle
                 $stmt_det->execute([
                     ':idv' => $id_venta,
                     ':idp' => $prod['id_producto'],
                     ':cant' => $prod['cantidad'],
-                    ':pre' => $prod['precio_venta'],
-                    ':sub' => $prod['subtotal']
+                    ':prec' => $prod['precio'],
+                    ':sub'  => $prod['subtotal']
+                ]);
+
+                // Restar stock
+                $stmt_stk->execute([
+                    ':cant' => $prod['cantidad'],
+                    ':idp'  => $prod['id_producto']
                 ]);
             }
 
-            // Si todo salió bien, confirmamos cambios
             $this->conn->commit();
-            return true;
-
+            return $id_venta; // Devolvemos el ID para imprimir el ticket si quieres
         } catch (Exception $e) {
-            // Si algo falló, deshacemos todo
             $this->conn->rollBack();
             return false;
         }
     }
 
-    // RF-35: CONSULTAR HISTORIAL
+    // 2. LISTAR HISTORIAL
     public function listarHistorial() {
-        $sql = "SELECT v.*, CONCAT(u.nombres, ' ', u.apellido_paterno) as vendedor 
+        $sql = "SELECT v.*, u.nombres as vendedor 
                 FROM ventas v 
                 INNER JOIN usuarios u ON v.id_usuario = u.id_usuario 
                 ORDER BY v.fecha_venta DESC";
@@ -63,44 +63,43 @@ class Venta {
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // RF-34 y RF-33: ANULAR VENTA Y RESTAURAR STOCK
-    public function anularVenta($id_venta) {
+    // 3. OBTENER DETALLES (Para el Modal)
+    public function obtenerDetalles($id_venta) {
+        $sql = "SELECT d.*, p.nombre, p.codigo 
+                FROM detalle_ventas d
+                INNER JOIN productos p ON d.id_producto = p.id_producto
+                WHERE d.id_venta = :id";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute([':id' => $id_venta]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // 4. ANULAR VENTA (Devolver productos al stock)
+    public function anular($id_venta) {
         try {
             $this->conn->beginTransaction();
 
-            // 1. Cambiar estado a ANULADO (0)
-            $sql = "UPDATE ventas SET estado = 0 WHERE id_venta = :id";
-            $stmt = $this->conn->prepare($sql);
-            $stmt->execute([':id' => $id_venta]);
+            // Obtener los productos de esa venta para devolverlos
+            $detalles = $this->obtenerDetalles($id_venta);
 
-            // 2. Obtener los productos de esa venta para devolverlos
-            $sql_det = "SELECT id_producto, cantidad FROM detalle_ventas WHERE id_venta = :id";
-            $stmt_det = $this->conn->prepare($sql_det);
-            $stmt_det->execute([':id' => $id_venta]);
-            $detalles = $stmt_det->fetchAll(PDO::FETCH_ASSOC);
+            $sql_stock = "UPDATE productos SET stock_actual = stock_actual + :cant WHERE id_producto = :idp";
+            $stmt_stk = $this->conn->prepare($sql_stock);
 
-            // 3. RF-33: RESTAURAR STOCK
-            foreach ($detalles as $item) {
-                $sql_rest = "UPDATE productos SET stock_actual = stock_actual + :cant WHERE id_producto = :id";
-                $stmt_rest = $this->conn->prepare($sql_rest);
-                $stmt_rest->execute([':cant' => $item['cantidad'], ':id' => $item['id_producto']]);
+            foreach ($detalles as $d) {
+                $stmt_stk->execute([':cant' => $d['cantidad'], ':idp' => $d['id_producto']]);
             }
+
+            // Marcar venta como anulada (Estado 0)
+            $sql_anular = "UPDATE ventas SET estado = 0 WHERE id_venta = :id";
+            $stmt_anular = $this->conn->prepare($sql_anular);
+            $stmt_anular->execute([':id' => $id_venta]);
 
             $this->conn->commit();
             return true;
-
         } catch (Exception $e) {
             $this->conn->rollBack();
             return false;
         }
-    }
-
-    // Función auxiliar para buscar producto por código en el POS
-    public function buscarPorCodigo($codigo) {
-        $sql = "SELECT * FROM productos WHERE codigo = :cod AND estado = 1";
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute([':cod' => $codigo]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 }
 ?>

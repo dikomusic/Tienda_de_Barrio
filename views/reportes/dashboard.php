@@ -2,166 +2,200 @@
 session_start();
 include_once '../../models/Reporte.php';
 
-// Seguridad: Solo Admin (RF Precondición)
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] != 1) {
-    header("Location: ../../index.php");
-    exit();
+// Seguridad
+if (!isset($_SESSION['id_usuario']) || $_SESSION['rol'] != 1) { 
+    header("Location: ../../login.php"); exit(); 
 }
 
-$modelo = new Reporte();
+$reporte = new Reporte();
+$hoy = $reporte->ventasHoy();
+$mes = $reporte->ventasMes();
+$bajos = $reporte->stockBajo();
+$chartData = $reporte->ventasUltimos7Dias();
+$topProd = $reporte->productosMasVendidos();
 
-// Lógica de Fechas (Por defecto: Mes actual)
-$fecha_inicio = isset($_GET['inicio']) ? $_GET['inicio'] : date('Y-m-01');
-$fecha_fin = isset($_GET['fin']) ? $_GET['fin'] : date('Y-m-d');
+// Preparamos datos para Javascript (Gráfico 1)
+$fechas = [];
+$totales = [];
+foreach($chartData as $d) {
+    $fechas[] = date('d/m', strtotime($d['fecha'])); // Formato dia/mes
+    $totales[] = $d['total'];
+}
 
-// Consultas a BD
-$datos_ventas = $modelo->obtenerTotalVentas($fecha_inicio, $fecha_fin);
-$top_productos = $modelo->obtenerMasVendidos($fecha_inicio, $fecha_fin);
-$bajo_stock = $modelo->obtenerBajoStock();
-$todo_stock = $modelo->obtenerStockCompleto();
+// Preparamos datos para Javascript (Gráfico 2 - Top Productos)
+$prodNombres = [];
+$prodCant = [];
+foreach($topProd as $p) {
+    $prodNombres[] = $p['nombre'];
+    $prodCant[] = $p['cantidad_total'];
+}
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Reportes y Estadisticas</title>
+    <title>Reportes y Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        /* ESTILOS GENERALES (Tu paleta de colores) */
+        * { box-sizing: border_box; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
+        body { display: flex; background-color: #f4f4f4; height: 100vh; overflow: hidden; }
+        
+     
+        .config-btn { background-color: #000099; text-align: center; padding: 15px; text-decoration: none; color: white; font-weight: bold; }
+
+        .main { flex-grow: 1; padding: 30px; overflow-y: auto; }
+        
+        /* TARJETAS DE DATOS (KPIs) */
+        .kpi-container { display: flex; gap: 20px; margin-bottom: 30px; }
+        .kpi-card { 
+            flex: 1; background: white; padding: 25px; border-radius: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 4px solid transparent;
+        }
+        /* Colores de borde inferior para diferenciar */
+        .kpi-blue { border-bottom-color: #0000CC; }
+        .kpi-green { border-bottom-color: #00aa00; }
+        .kpi-red { border-bottom-color: #cc0000; }
+
+        .kpi-info h3 { font-size: 32px; margin-bottom: 5px; color: #333; }
+        .kpi-info p { color: #888; font-size: 14px; font-weight: bold; text-transform: uppercase; }
+        .kpi-icon { font-size: 40px; opacity: 0.2; }
+
+        /* SECCION DE GRAFICOS */
+        .charts-row { display: flex; gap: 20px; margin-bottom: 30px; height: 400px; }
+        
+        .chart-card { 
+            background: white; border-radius: 15px; padding: 20px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); flex: 1;
+            display: flex; flex-direction: column;
+        }
+        .chart-title { font-size: 16px; font-weight: bold; margin-bottom: 20px; color: #555; }
+        
+        /* LISTA TOP PRODUCTOS */
+        .top-list { list-style: none; padding: 0; }
+        .top-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+        .top-item:last-child { border-bottom: none; }
+        .rank-badge { background: #0000CC; color: white; width: 25px; height: 25px; border-radius: 50%; display: inline-flex; justify-content: center; align-items: center; font-size: 12px; margin-right: 10px; }
+
+    </style>
 </head>
 <body>
-    <a href="../../index.php">Volver al Menu</a>
-    <hr>
 
-    <h1>Panel de Control (Dashboard)</h1>
+    <?php include '../sidebar.php'; ?>
 
-    <fieldset>
-        <legend>Rango de Reporte</legend>
-        <form action="" method="GET">
-            <label>Desde:</label>
-            <input type="date" name="inicio" value="<?php echo $fecha_inicio; ?>" required>
-            
-            <label>Hasta:</label>
-            <input type="date" name="fin" value="<?php echo $fecha_fin; ?>" required>
-            
-            <button type="submit">GENERAR REPORTE</button>
-        </form>
-    </fieldset>
+    <div class="main">
+        <h1 style="margin-bottom:5px;">Dashboard General</h1>
+        <button onclick="window.print()" class="btn btn-primary" style="background: #ef4444;">
+    📄 Exportar PDF
+</button>
+        <p style="color:#666; margin-bottom:30px;">Resumen estadístico de tu negocio</p>
 
-    <br>
+        <div class="kpi-container">
+            <div class="kpi-card kpi-blue">
+                <div class="kpi-info">
+                    <h3><?php echo number_format($hoy, 2); ?> Bs</h3>
+                    <p>Ventas de Hoy</p>
+                </div>
+                <div class="kpi-icon">📅</div>
+            </div>
 
-    <button onclick="window.print();">IMPRIMIR / EXPORTAR PDF</button>
+            <div class="kpi-card kpi-green">
+                <div class="kpi-info">
+                    <h3><?php echo number_format($mes, 2); ?> Bs</h3>
+                    <p>Acumulado Mes</p>
+                </div>
+                <div class="kpi-icon">📈</div>
+            </div>
 
-    <hr>
+            <div class="kpi-card kpi-red">
+                <div class="kpi-info">
+                    <h3 style="color:#cc0000;"><?php echo $bajos; ?></h3>
+                    <p>Stock Bajo</p>
+                </div>
+                <div class="kpi-icon">⚠️</div>
+            </div>
+        </div>
 
-    <h2>1. Reporte Financiero</h2>
-    
-    <table border="1" width="50%">
-        <tr>
-            <td bgcolor="#ddd"><strong>Total Vendido (Dinero):</strong></td>
-            <td><h2><?php echo number_format($datos_ventas['total_ganado'], 2); ?> Bs</h2></td>
-        </tr>
-        <tr>
-            <td bgcolor="#ddd"><strong>Transacciones Realizadas:</strong></td>
-            <td><?php echo $datos_ventas['cantidad_ventas']; ?> Ventas</td>
-        </tr>
-    </table>
+        <div class="charts-row">
+            <div class="chart-card" style="flex: 2;"> <div class="chart-title">Comportamiento de Ventas (Últimos 7 días)</div>
+                <div style="position: relative; height:100%; width:100%;">
+                    <canvas id="ventasChart"></canvas>
+                </div>
+            </div>
 
-    <h3>Productos Mas Vendidos (Top 5)</h3>
-    <?php if(!empty($top_productos)): ?>
-        <table border="1" width="50%">
-            <thead>
-                <tr bgcolor="#eee">
-                    <th>Producto</th>
-                    <th>Unidades Vendidas</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach($top_productos as $top): ?>
-                    <tr>
-                        <td><?php echo $top['nombre']; ?></td>
-                        <td><?php echo $top['total_unidades']; ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php else: ?>
-        <p>No hay ventas registradas en este periodo (Excepcion 1).</p>
-    <?php endif; ?>
+            <div class="chart-card" style="flex: 1;">
+                <div class="chart-title">Top 5 Más Vendidos</div>
+                <div style="position: relative; height:200px; display:flex; justify-content:center;">
+                    <canvas id="topChart"></canvas>
+                </div>
+                <div style="margin-top:20px; flex-grow:1; overflow-y:auto;">
+                    <ul class="top-list">
+                        <?php 
+                        $i = 1;
+                        foreach($topProd as $p): ?>
+                            <li class="top-item">
+                                <span><span class="rank-badge"><?php echo $i++; ?></span> <?php echo $p['nombre']; ?></span>
+                                <strong><?php echo $p['cantidad_total']; ?> und.</strong>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            </div>
+        </div>
 
-    <hr>
+    </div>
 
-    <h2>2. Reporte de Almacen</h2>
+    <script>
+        // --- GRAFICO 1: VENTAS SEMANALES (Barras) ---
+        const ctx1 = document.getElementById('ventasChart').getContext('2d');
+        new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: <?php echo json_encode($fechas); ?>, // Fechas desde PHP
+                datasets: [{
+                    label: 'Ventas (Bs)',
+                    data: <?php echo json_encode($totales); ?>, // Totales desde PHP
+                    backgroundColor: '#0000CC',
+                    borderRadius: 5,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { borderDash: [5, 5] } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
 
-    <h3>⚠️ Alerta: Productos Bajo Stock (RF-38)</h3>
-    <?php if(!empty($bajo_stock)): ?>
-        <table border="1" width="100%" style="border: 2px solid red;">
-            <thead>
-                <tr bgcolor="#ffcccc"> <th>Codigo</th>
-                    <th>Producto</th>
-                    <th>Stock Minimo</th>
-                    <th>Stock Actual</th>
-                    <th>Accion</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach($bajo_stock as $prod): ?>
-                    <tr>
-                        <td><?php echo $prod['codigo']; ?></td>
-                        <td><?php echo $prod['nombre']; ?></td>
-                        <td><?php echo $prod['stock_minimo']; ?></td>
-                        <td style="color:red; font-weight:bold;"><?php echo $prod['stock_actual']; ?></td>
-                        <td>
-                            <a href="../compras/registrar.php">Reponer Stock</a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php else: ?>
-        <p style="color:green;"><strong>Inventario Saludable (Excepcion 2): No hay productos urgentes.</strong></p>
-    <?php endif; ?>
-
-    <br>
-
-    <h3>Estado General del Inventario (RF-37)</h3>
-    <table border="1" width="100%">
-        <thead>
-            <tr bgcolor="#ddd">
-                <th>Producto</th>
-                <th>Categoria</th>
-                <th>Proveedor</th>
-                <th>Costo</th>
-                <th>P. Venta</th>
-                <th>Stock</th>
-                <th>Valoracion (Stock x Costo)</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php 
-                $valor_total_almacen = 0;
-                foreach($todo_stock as $p): 
-                    $valor_item = $p['stock_actual'] * $p['precio_compra'];
-                    $valor_total_almacen += $valor_item;
-            ?>
-                <tr>
-                    <td><?php echo $p['nombre']; ?></td>
-                    <td><?php echo $p['nombre_categoria']; ?></td>
-                    <td><?php echo $p['empresa']; ?></td>
-                    <td><?php echo $p['precio_compra']; ?></td>
-                    <td><?php echo $p['precio_venta']; ?></td>
-                    <td><?php echo $p['stock_actual']; ?></td>
-                    <td><?php echo number_format($valor_item, 2); ?></td>
-                </tr>
-            <?php endforeach; ?>
-        </tbody>
-        <tfoot>
-            <tr>
-                <td colspan="6" align="right"><strong>VALOR TOTAL DE MERCADERIA:</strong></td>
-                <td><strong><?php echo number_format($valor_total_almacen, 2); ?> Bs</strong></td>
-            </tr>
-        </tfoot>
-    </table>
-
-    <br><br><br>
+        // --- GRAFICO 2: TOP PRODUCTOS (Dona) ---
+        const ctx2 = document.getElementById('topChart').getContext('2d');
+        new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: <?php echo json_encode($prodNombres); ?>,
+                datasets: [{
+                    data: <?php echo json_encode($prodCant); ?>,
+                    backgroundColor: [
+                        '#0000CC', '#000099', '#3333ff', '#6666ff', '#9999ff' // Gama de azules
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                cutout: '70%' // Hace la dona más fina
+            }
+        });
+    </script>
 
 </body>
 </html>

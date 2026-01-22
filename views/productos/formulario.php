@@ -1,140 +1,75 @@
 <?php
 session_start();
-include_once '../../models/Producto.php';
+include_once '../../models/Categoria.php';
+include_once '../../models/Proveedor.php';
 
-// Seguridad: Solo Admin
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] != 1) {
-    header("Location: ../../index.php");
-    exit();
-}
+if (!isset($_SESSION['id_usuario'])) { header("Location: ../../login.php"); exit(); }
 
-$modelo = new Producto();
-$categorias = $modelo->listarCategorias();
-$proveedores = $modelo->listarProveedores();
-
-$p = null; // Producto vacio
-$titulo = "Registrar Nuevo Producto";
-$accion = "guardar";
-
-// Si viene ID, es Edicion
-if (isset($_GET['id'])) {
-    $p = $modelo->obtenerPorId($_GET['id']);
-    $titulo = "Modificar Producto";
-    $accion = "editar";
-}
+$catModel = new Categoria(); $categorias = $catModel->listar();
+$provModel = new Proveedor(); $proveedores = $provModel->listar();
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title><?php echo $titulo; ?></title>
+    <title>Nuevo Producto</title>
+    <style>
+        body { background-color: #f4f4f4; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; padding-top: 50px; }
+        .form-card { background: white; padding: 40px; border-radius: 15px; width: 600px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        h1 { margin-bottom: 20px; }
+        label { display: block; font-weight: bold; margin-top: 15px; font-size: 14px; color: #333; }
+        input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; background: #fafafa; }
+        .btn-save { background: black; color: white; border: none; padding: 15px; width: 100%; margin-top: 30px; border-radius: 5px; font-size: 16px; cursor: pointer; }
+        .btn-back { display: block; text-align: center; margin-top: 15px; color: #666; text-decoration: none; }
+    </style>
 </head>
 <body>
 
-    <h1><?php echo $titulo; ?></h1>
+    <div class="form-card">
+        <h1>Registrar Nuevo Producto</h1>
+        <p style="color:#666; font-size:12px; margin-bottom:20px;">
+            Nota: El Stock y Precio de Compra se actualizarán automáticamente cuando registres una compra de este producto.
+        </p>
 
-    <?php if(isset($_GET['error'])): ?>
-        <div style="color:red; border:1px solid red; padding:10px;">
-            <strong>ERROR:</strong>
-            <?php 
-                if($_GET['error'] == 'codigo_duplicado') echo "El CODIGO ingresado ya existe en otro producto.";
-                if($_GET['error'] == 'negativo') echo "El precio o stock no pueden ser negativos.";
-                if($_GET['error'] == 'formato_imagen') echo "Formato de imagen no valido (Solo JPG/PNG).";
-                if($_GET['error'] == 'bd') echo "Error de Base de Datos.";
-            ?>
-        </div>
-        <br>
-    <?php endif; ?>
+        <form action="../../controllers/ProductoController.php" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="accion" value="guardar">
 
-    <form action="../../controllers/ProductoController.php" method="POST" enctype="multipart/form-data">
-        
-        <input type="hidden" name="accion" value="<?php echo $accion; ?>">
-        <?php if($p): ?>
-            <input type="hidden" name="id_producto" value="<?php echo $p['id_producto']; ?>">
-            <input type="hidden" name="imagen_actual" value="<?php echo $p['imagen']; ?>">
-        <?php endif; ?>
+            <label>Código de Barras / Código Interno</label>
+            <input type="text" name="codigo" required placeholder="Escanea o escribe el código">
 
-        <fieldset>
-            <legend>Datos Principales</legend>
+            <label>Nombre del Producto</label>
+            <input type="text" name="nombre" required placeholder="Ej: Coca Cola 2L">
 
-            <label>Codigo de Barras / Manual:</label><br>
-            <input type="text" name="codigo" required 
-                   value="<?php echo $p ? $p['codigo'] : ''; ?>" 
-                   <?php echo $p ? 'readonly' : ''; ?>> 
-            <?php if($p) echo "(No se puede modificar)"; ?>
-            <br><br>
+            <div style="display:flex; gap:20px;">
+                <div style="flex:1;">
+                    <label>Categoría</label>
+                    <select name="id_categoria" required>
+                        <?php foreach($categorias as $c): ?>
+                            <option value="<?php echo $c['id_categoria']; ?>"><?php echo $c['nombre_categoria']; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div style="flex:1;">
+                    <label>Proveedor Principal</label>
+                    <select name="id_proveedor" required>
+                        <?php foreach($proveedores as $p): ?>
+                            <option value="<?php echo $p['id_proveedor']; ?>"><?php echo $p['empresa']; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
 
-            <label>Nombre del Producto:</label><br>
-            <input type="text" name="nombre" required value="<?php echo $p ? $p['nombre'] : ''; ?>"><br><br>
+            <label>Precio de Venta al Público (Bs)</label>
+            <input type="number" name="precio_venta" step="0.50" required placeholder="0.00">
 
-            <label>Descripcion:</label><br>
-            <textarea name="descripcion" rows="3"><?php echo $p ? $p['descripcion'] : ''; ?></textarea><br><br>
+            <label>Imagen del Producto</label>
+            <input type="file" name="imagen">
 
-            <label>Categoria:</label><br>
-            <select name="id_categoria" required>
-                <option value="">-- Seleccione --</option>
-                <?php foreach($categorias as $cat): ?>
-                    <option value="<?php echo $cat['id_categoria']; ?>" 
-                        <?php echo ($p && $p['id_categoria'] == $cat['id_categoria']) ? 'selected' : ''; ?>>
-                        <?php echo $cat['nombre_categoria']; ?>
-                    </option>
-                <?php endforeach; ?>
-            </select><br><br>
-
-            <label>Proveedor:</label><br>
-            <select name="id_proveedor" required>
-                <option value="">-- Seleccione --</option>
-                <?php foreach($proveedores as $prov): ?>
-                    <option value="<?php echo $prov['id_proveedor']; ?>" 
-                        <?php echo ($p && $p['id_proveedor'] == $prov['id_proveedor']) ? 'selected' : ''; ?>>
-                        <?php echo $prov['empresa']; ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </fieldset>
-
-        <br>
-
-        <fieldset>
-            <legend>Precios y Stock</legend>
-
-            <label>Precio Compra (Costo):</label><br>
-            <input type="number" step="0.50" name="precio_compra" required 
-                   value="<?php echo $p ? $p['precio_compra'] : ''; ?>"><br><br>
-
-            <label>Precio Venta (Publico):</label><br>
-            <input type="number" step="0.50" name="precio_venta" required 
-                   value="<?php echo $p ? $p['precio_venta'] : ''; ?>"><br><br>
-
-            <label>Stock Actual:</label><br>
-            <input type="number" name="stock" required 
-                   value="<?php echo $p ? $p['stock_actual'] : '0'; ?>"><br><br>
-
-            <label>Stock Minimo (Alerta):</label><br>
-            <input type="number" name="stock_minimo" required 
-                   value="<?php echo $p ? $p['stock_minimo'] : '5'; ?>">
-        </fieldset>
-
-        <br>
-
-        <fieldset>
-            <legend>Imagen del Producto</legend>
-            <?php if($p && $p['imagen']): ?>
-                <p>Imagen Actual:</p>
-                <img src="../../<?php echo $p['imagen']; ?>" width="100"><br>
-            <?php endif; ?>
-            
-            <label>Seleccionar Nueva Imagen:</label><br>
-            <input type="file" name="imagen" accept="image/*">
-        </fieldset>
-
-        <br>
-        <button type="submit">GUARDAR PRODUCTO</button>
-        <br><br>
-        <a href="index.php">Cancelar y Volver</a>
-
-    </form>
+            <button type="submit" class="btn-save">GUARDAR PRODUCTO</button>
+            <a href="index.php" class="btn-back">Cancelar y Volver</a>
+        </form>
+    </div>
 
 </body>
 </html>

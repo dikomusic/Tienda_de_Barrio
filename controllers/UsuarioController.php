@@ -2,89 +2,89 @@
 session_start();
 include_once '../models/Usuario.php';
 
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] != 1) { header("Location: ../index.php"); exit(); }
+// 1. VALIDACIÓN BÁSICA: ¿Está logueado?
+if (!isset($_SESSION['id_usuario'])) { 
+    header("Location: ../login.php"); 
+    exit(); 
+}
 
 $modelo = new Usuario();
 
-if (isset($_POST['accion'])) {
-    // Recogemos TODOS los datos del diagrama
-    $ci = $_POST['ci'];
-    $nombres = trim($_POST['nombres']);
-    $paterno = trim($_POST['paterno']);
-    $materno = trim($_POST['materno']);
-    $celular = $_POST['celular'];
-    $direccion = $_POST['direccion'];
-    $nacimiento = $_POST['nacimiento'];
-    $rol = $_POST['id_rol'];
+// ==========================================================
+// ZONA PÚBLICA (ACCIONES PARA CUALQUIER EMPLEADO O ADMIN)
+// ==========================================================
 
-    // ACCIÓN: REGISTRAR (RF-03 y RF-04)
-    // CASO 1: REGISTRAR USUARIO
-    // CASO 1: REGISTRAR USUARIO
-    if ($_POST['accion'] == 'guardar') {
-        
-        // EXCEPCION 4: Validar CI Duplicado ANTES de guardar
-        if ($modelo->existeCI($ci)) {
-            header("Location: ../views/usuarios/formulario.php?error=ci_duplicado");
-            exit();
-        }
+// --- CAMBIAR MI PROPIA CONTRASEÑA (Desde Perfil) ---
+if (isset($_POST['accion']) && $_POST['accion'] == 'cambiar_pass_perfil') {
+    $id = $_SESSION['id_usuario']; // Usamos el ID de la sesión (Seguro)
+    $clave = $_POST['clave'];
+    $confirmar = $_POST['confirmar'];
 
-        // ALGORITMO DE GENERACION (EXCEPCION 3)
-        $l1 = substr(strtolower($nombres), 0, 1);
-        $p1 = strtolower(str_replace(' ', '', $paterno));
-        $m1 = substr(strtolower($materno), 0, 1);
-        
-        $base_cuenta = $l1 . $p1 . $m1; // Ej: eguarachia
-        $cuenta_final = $base_cuenta;
-        $contador = 1;
-
-        // BUCLE: Mientras exista, le agregamos un numero (eguarachia1, eguarachia2...)
-        while ($modelo->existeUsuario($cuenta_final)) {
-            $cuenta_final = $base_cuenta . $contador; 
-            $contador++;
-        }
-        
-        $clave_defecto = "Tienda de Barrio";
-
-        if ($modelo->crear($ci, $nombres, $paterno, $materno, $celular, $direccion, $nacimiento, $cuenta_final, $clave_defecto, $rol)) {
-            header("Location: ../views/usuarios/index.php?mensaje=creado&usr=" . $cuenta_final);
-        } else {
-            header("Location: ../views/usuarios/formulario.php?error=bd");
-        }
+    // Validaciones
+    if ($clave != $confirmar) {
+        header("Location: ../views/configuracion/index.php?error=no_coinciden");
+        exit();
+    }
+    if (strlen($clave) < 4) {
+        header("Location: ../views/configuracion/index.php?error=muy_corta");
+        exit();
     }
 
-    // ACCIÓN: MODIFICAR (RF-07)
-    if ($_POST['accion'] == 'editar') {
-        $id = $_POST['id_usuario'];
-        // Nota: En modificar NO cambiamos la clave ni el usuario, según diagrama
-        if ($modelo->actualizar($id, $ci, $nombres, $paterno, $materno, $celular, $direccion, $nacimiento, $rol)) {
-            header("Location: ../views/usuarios/index.php?mensaje=editado");
-        } else {
-            header("Location: ../views/usuarios/formulario.php?id=$id&error=bd");
-        }
-    }
+    // Ejecutar cambio
+    $modelo->cambiarPropiaClave($id, $clave);
+    header("Location: ../views/configuracion/index.php?mensaje=clave_actualizada");
+    exit();
 }
 
-// ACCIÓN: RESTABLECER ACCESO (RF-09) - Tal cual diagrama de secuencia
+// ==========================================================
+// ZONA RESTRINGIDA (SOLO ADMINISTRADORES)
+// ==========================================================
+
+// Si intenta hacer algo de abajo y NO es admin (Rol 1), lo expulsamos.
+if ($_SESSION['rol'] != 1) {
+    header("Location: ../index.php?error=acceso_denegado");
+    exit();
+}
+
+// --- CREAR O EDITAR OTROS USUARIOS ---
+if (isset($_POST['accion'])) {
+    $id = $_POST['id_usuario'];
+    $ci = $_POST['ci'];
+    $nombres = $_POST['nombres'];
+    $apaterno = $_POST['apellido_paterno'];
+    $amaterno = $_POST['apellido_materno'];
+    $rol = $_POST['rol'];
+
+    if ($_POST['accion'] == 'guardar') {
+        $modelo->crear($ci, $nombres, $apaterno, $amaterno, $rol);
+        header("Location: ../views/usuarios/index.php?mensaje=creado");
+    } elseif ($_POST['accion'] == 'editar') {
+        $modelo->actualizar($id, $ci, $nombres, $apaterno, $amaterno, $rol);
+        header("Location: ../views/usuarios/index.php?mensaje=actualizado");
+    }
+    exit();
+}
+
+// --- RESTABLECER CLAVE DE OTRO USUARIO ---
 if (isset($_GET['accion']) && $_GET['accion'] == 'restablecer') {
     $id = $_GET['id'];
-    $clave_defecto = "Tienda de Barrio";
-    
-    $modelo->restablecerClave($id, $clave_defecto);
+    $modelo->restablecerClave($id);
     header("Location: ../views/usuarios/index.php?mensaje=restablecido");
+    exit();
 }
 
-// ACCIÓN: INHABILITAR (RF-10)
-// EXCEPCION 6: Validar Autobloqueo
-    if (isset($_GET['accion']) && $_GET['accion'] == 'estado') {
-        $id = $_GET['id'];
-        $estado = $_GET['estado'];
-
-        if($id == $_SESSION['id_usuario']) { 
-            header("Location: ../views/usuarios/index.php?error=propio"); 
-            exit(); 
-        }
-
-        $modelo->cambiarEstado($id, $estado);
-        header("Location: ../views/usuarios/index.php");
+// --- CAMBIAR ESTADO (ACTIVAR/DESACTIVAR) ---
+if (isset($_GET['accion']) && $_GET['accion'] == 'estado') {
+    $id = $_GET['id'];
+    $estado = $_GET['estado'];
+    
+    if ($id == $_SESSION['id_usuario'] && $estado == 0) {
+        header("Location: ../views/usuarios/index.php?error=auto_desactivar");
+        exit();
     }
+
+    $modelo->cambiarEstado($id, $estado);
+    header("Location: ../views/usuarios/index.php?mensaje=estado_cambiado");
+    exit();
+}
 ?>

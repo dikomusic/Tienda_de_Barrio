@@ -1,86 +1,65 @@
 <?php
-// controllers/ProductoController.php
 session_start();
 include_once '../models/Producto.php';
 
-// Seguridad: Solo Admin puede gestionar (Empleados solo ven, pero no gestionan por aqui)
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] != 1) {
-    header("Location: ../index.php");
-    exit();
-}
+// Validar si el usuario está logueado
+if (!isset($_SESSION['id_usuario'])) { header("Location: ../login.php"); exit(); }
 
 $modelo = new Producto();
 
-if (isset($_POST['accion'])) {
-    // Recoger datos básicos
+// ACCIÓN: GUARDAR NUEVO PRODUCTO
+if (isset($_POST['accion']) && $_POST['accion'] == 'guardar') {
+    // 1. Recibimos SOLO los datos del nuevo formulario
+    $codigo = $_POST['codigo'];
     $nombre = $_POST['nombre'];
-    $codigo = $_POST['codigo']; // Solo para registrar
-    $descripcion = $_POST['descripcion'];
-    $p_compra = $_POST['precio_compra'];
-    $p_venta = $_POST['precio_venta'];
-    $stock = $_POST['stock'];
-    $minimo = $_POST['stock_minimo'];
-    $categoria = $_POST['id_categoria'];
-    $proveedor = $_POST['id_proveedor'];
+    $id_categoria = $_POST['id_categoria']; // Si esto llega vacío, da error
+    $id_proveedor = $_POST['id_proveedor'];
+    $precio_venta = $_POST['precio_venta'];
 
-    // EXCEPCIÓN 3: Validar negativos (RF-20)
-    if ($p_compra < 0 || $p_venta < 0 || $stock < 0) {
-        header("Location: ../views/productos/formulario.php?error=negativo");
+    // 2. Validación de Seguridad (Evita el error "Column cannot be null")
+    if (empty($id_categoria) || empty($id_proveedor)) {
+        // Si por alguna razón están vacíos, devolvemos al form con error
+        header("Location: ../views/productos/formulario.php?error=faltan_datos");
         exit();
     }
-
-    // --- MANEJO DE IMAGEN (RF-12) ---
-    $imagen_bd = isset($_POST['imagen_actual']) ? $_POST['imagen_actual'] : null; // Mantener la anterior si no cambia
     
-    if (isset($_FILES['imagen']) && $_FILES['imagen']['error'] == 0) {
-        $permitidos = ['image/jpeg', 'image/png', 'image/jpg'];
-        if (in_array($_FILES['imagen']['type'], $permitidos)) {
-            $ruta = '../uploads/';
-            if (!file_exists($ruta)) mkdir($ruta, 0777, true); // Crear carpeta si no existe
-            
-            $nombre_archivo = time() . "_" . $_FILES['imagen']['name']; // Nombre único
-            move_uploaded_file($_FILES['imagen']['tmp_name'], $ruta . $nombre_archivo);
-            $imagen_bd = 'uploads/' . $nombre_archivo;
-        } else {
-            // EXCEPCIÓN 2: Formato inválido
-            header("Location: ../views/productos/formulario.php?error=formato_imagen");
-            exit();
-        }
-    }
-    // ---------------------------------
-
-    // CASO 1: REGISTRAR
-    if ($_POST['accion'] == 'guardar') {
-        // EXCEPCIÓN 1: Código Duplicado
-        if ($modelo->existeCodigo($codigo)) {
-            header("Location: ../views/productos/formulario.php?error=codigo_duplicado");
-            exit();
-        }
-
-        if ($modelo->crear($codigo, $nombre, $descripcion, $p_compra, $p_venta, $stock, $minimo, $imagen_bd, $categoria, $proveedor)) {
-            header("Location: ../views/productos/index.php?mensaje=creado");
-        } else {
-            header("Location: ../views/productos/formulario.php?error=bd");
-        }
-    }
-
-    // CASO 2: EDITAR
-    if ($_POST['accion'] == 'editar') {
-        $id = $_POST['id_producto'];
+    // 3. Manejo de la Imagen (Si no suben nada, pone una por defecto)
+    $imagen = "default.png"; 
+    if (isset($_FILES['imagen']) && $_FILES['imagen']['name']) {
+        $target_dir = "../uploads/";
+        if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); } // Crea carpeta si no existe
         
-        if ($modelo->actualizar($id, $nombre, $descripcion, $p_compra, $p_venta, $stock, $minimo, $imagen_bd, $categoria, $proveedor)) {
-            header("Location: ../views/productos/index.php?mensaje=editado");
-        } else {
-            header("Location: ../views/productos/formulario.php?id=$id&error=bd");
+        $nombre_archivo = time() . "_" . basename($_FILES["imagen"]["name"]); // Nombre único
+        $target_file = $target_dir . $nombre_archivo;
+        
+        if (move_uploaded_file($_FILES["imagen"]["tmp_name"], $target_file)) {
+            $imagen = "uploads/" . $nombre_archivo;
         }
     }
+
+    // 4. LLAMAMOS AL MODELO (OJO: Stock y Precio Compra inician en 0 automáticamente)
+    $res = $modelo->crear($codigo, $nombre, $id_categoria, $id_proveedor, $precio_venta, $imagen);
+
+    if ($res) {
+        header("Location: ../views/productos/index.php"); // Éxito
+    } else {
+        header("Location: ../views/productos/formulario.php?error=db"); // Error BD
+    }
+    exit();
 }
 
-// CASO 3: INHABILITAR (RF-14)
+// ACCIÓN: ELIMINAR (Opcional, si lo necesitas)
+if (isset($_GET['eliminar'])) {
+    // ... lógica de eliminar
+}
+
 if (isset($_GET['accion']) && $_GET['accion'] == 'estado') {
     $id = $_GET['id'];
-    $estado = $_GET['estado'];
+    $estado = $_GET['estado']; // 1 o 0
+    
     $modelo->cambiarEstado($id, $estado);
+    
     header("Location: ../views/productos/index.php");
+    exit();
 }
 ?>

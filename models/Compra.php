@@ -107,5 +107,16 @@ class Compra {
             return "ERROR_BD";
         }
     }
+
+    // NUEVA FUNCION: Para ver el detalle en la ventana modal
+    public function obtenerDetallesCompra($id_compra) {
+        $sql = "SELECT d.*, p.nombre, p.codigo 
+                FROM detalle_compras d
+                INNER JOIN productos p ON d.id_producto = p.id_producto
+                WHERE d.id_compra = :id";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute([':id' => $id_compra]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }
 ?>

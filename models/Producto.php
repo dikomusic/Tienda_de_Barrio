@@ -11,33 +11,34 @@ class Producto {
         $this->conn = $db->getConexion();
     }
 
-    // RF-17: Visualizar Catálogo (con nombres de categoria y proveedor)
     public function listar() {
+        // CORRECCIÓN: Quitamos el "WHERE estado = 1" para que traiga TODOS
         $sql = "SELECT p.*, c.nombre_categoria, pr.empresa 
-                FROM " . $this->table . " p
-                INNER JOIN categorias c ON p.id_categoria = c.id_categoria
-                INNER JOIN proveedores pr ON p.id_proveedor = pr.id_proveedor
-                ORDER BY p.nombre ASC";
+                FROM productos p 
+                LEFT JOIN categorias c ON p.id_categoria = c.id_categoria
+                LEFT JOIN proveedores pr ON p.id_proveedor = pr.id_proveedor
+                ORDER BY p.id_producto DESC"; 
         $stmt = $this->conn->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // RF-11: Registrar Producto (Incluye Precio Compra e Imagen)
-    public function crear($codigo, $nombre, $desc, $p_compra, $p_venta, $stock, $min, $img, $cat, $prov) {
-        $sql = "INSERT INTO " . $this->table . " 
-                (codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual, stock_minimo, imagen, id_categoria, id_proveedor, estado) 
-                VALUES (:cod, :nom, :desc, :pcom, :pven, :stock, :min, :img, :cat, :prov, 1)";
+    // NUEVO: Crear producto SIN pedir stock ni costo (empiezan en 0)
+    public function crear($codigo, $nombre, $id_cat, $id_prov, $precio_venta, $imagen) {
+        // Nota como 'stock_actual' y 'precio_compra' se ponen en 0 forzosamente
+        $sql = "INSERT INTO productos (codigo, nombre, id_categoria, id_proveedor, precio_venta, imagen, stock_actual, precio_compra, estado) 
+                VALUES (:cod, :nom, :cat, :prov, :p_venta, :img, 0, 0, 1)";
         
         $stmt = $this->conn->prepare($sql);
         return $stmt->execute([
-            ':cod' => $codigo, ':nom' => $nombre, ':desc' => $desc, 
-            ':pcom' => $p_compra, ':pven' => $p_venta, 
-            ':stock' => $stock, ':min' => $min, 
-            ':img' => $img, ':cat' => $cat, ':prov' => $prov
+            ':cod' => $codigo, 
+            ':nom' => $nombre, 
+            ':cat' => $id_cat, 
+            ':prov' => $id_prov, 
+            ':p_venta' => $precio_venta, 
+            ':img' => $imagen
         ]);
     }
-
     // RF-13: Modificar Producto
     public function actualizar($id, $nombre, $desc, $p_compra, $p_venta, $stock, $min, $img, $cat, $prov) {
         // Nota: El código NO se edita por seguridad
@@ -70,8 +71,13 @@ class Producto {
     }
 
     public function obtenerPorId($id) {
-        $stmt = $this->conn->prepare("SELECT * FROM " . $this->table . " WHERE id_producto = :id");
-        $stmt->execute([':id' => $id]);
+        $sql = "SELECT p.*, c.nombre_categoria, pr.empresa 
+                FROM productos p 
+                LEFT JOIN categorias c ON p.id_categoria = c.id_categoria
+                LEFT JOIN proveedores pr ON p.id_proveedor = pr.id_proveedor
+                WHERE p.id_producto = :id";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute([':id'=>$id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
